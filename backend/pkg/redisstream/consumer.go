@@ -112,10 +112,7 @@ func (c *consumerImpl) ConsumeNext() error {
 			idParts := strings.Split(m.ID, "-")
 			ts, _ := strconv.ParseUint(idParts[0], 10, 64)
 			idx, _ := strconv.ParseUint(idParts[1], 10, 64)
-			if idx > 0x1FFF {
-				return errors.New("Too many messages per ms in redis")
-			}
-			bID := ts<<13 | (idx & 0x1FFF) // Max: 4096 messages/ms for 69 years
+			bID := ts<<13 | (idx & 0x1FFF) // Max: 4096 messages/ms for 69 years, wrap idx to prevent crash on skew
 			c.messageIterator.Iterate([]byte(valueString), messages.NewBatchInfo(sessionID, r.Stream, bID, 0, int64(ts)))
 			if c.processedHook != nil {
 				c.processedHook(r.Stream, 0, int64(bID))
