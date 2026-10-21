@@ -57,7 +57,14 @@ func main() {
 	projManager := projects.New(log, pgConn, redisClient, dbMetric)
 	sessManager := sessions.New(log, pgConn, projManager, redisClient, dbMetric, sessions.IgnoreInactiveProjects)
 
-	sessionEndGenerator, err := ender.New(log, enderMetric, ender.EVENTS_SESSION_END_TIMEOUT, cfg.PartitionsNumber)
+		sessionTimeout := int64(ender.EVENTS_SESSION_END_TIMEOUT)
+	backCommitGap := int64(ender.EVENTS_BACK_COMMIT_GAP)
+	if cfg.InactivityTimeoutSec > 0 {
+		sessionTimeout = int64(cfg.InactivityTimeoutSec) * 1000
+		backCommitGap = sessionTimeout + 60*1000
+	}
+
+	sessionEndGenerator, err := ender.New(log, enderMetric, sessionTimeout, cfg.PartitionsNumber)
 	if err != nil {
 		log.Fatal(ctx, "can't init ender service: %s", err)
 	}
@@ -99,7 +106,7 @@ func main() {
 				cleanupDispatcher.ActivePartitions(partitions)
 			}
 		},
-		-ender.EVENTS_BACK_COMMIT_GAP,
+		-time.Duration(backCommitGap)*time.Millisecond,
 	)
 	if err != nil {
 		log.Fatal(ctx, "can't init message consumer: %s", err)
@@ -108,7 +115,7 @@ func main() {
 		return consumer.Ping(ctx)
 	})
 
-	log.Info(ctx, "Ender service started")
+	log.Info(ctx, "Ender service started (inactivity timeout: %ds, back commit gap: %ds)", sessionTimeout/1000, backCommitGap/1000)
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
@@ -119,7 +126,7 @@ func main() {
 		case sig := <-sigchan:
 			log.Info(ctx, "Caught signal %v: terminating", sig)
 			producer.Close(cfg.ProducerTimeout)
-			if err := consumer.CommitBack(ender.EVENTS_BACK_COMMIT_GAP); err != nil {
+			if err := consumer.CommitBack(backCommitGap); err != nil {
 				log.Error(ctx, "can't commit messages with offset: %s", err)
 			}
 			consumer.Close()
@@ -133,7 +140,7 @@ func main() {
 			details.Log(log, ctx)
 			details.Record(enderMetric)
 			producer.Flush(cfg.ProducerTimeout)
-			if err := consumer.CommitBack(ender.EVENTS_BACK_COMMIT_GAP); err != nil {
+			if err := consumer.CommitBack(backCommitGap); err != nil {
 				log.Error(ctx, "can't commit messages with offset: %s", err)
 			}
 		default:

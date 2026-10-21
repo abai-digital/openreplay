@@ -12,7 +12,8 @@ type Config struct {
 	common.Config
 	common.Postgres
 	redis.Redis
-	ProjectExpiration time.Duration `env:"PROJECT_EXPIRATION,default=10m"`
+	InactivityTimeoutSec int           `env:"INACTIVITY_TIMEOUT_SEC,default=0"`
+	ProjectExpiration    time.Duration `env:"PROJECT_EXPIRATION,default=10m"`
 	GroupEnder        string        `env:"GROUP_ENDER,required"`
 	LoggerTimeout     int           `env:"LOG_QUEUE_STATS_INTERVAL_SEC,required"`
 	TopicRawWeb       string        `env:"TOPIC_RAW_WEB,required"`
